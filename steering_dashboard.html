@@ -4869,6 +4869,261 @@
   <script>
     // ─── Sound & HUD State & Engine Synthesizer ───────────────────────────────
 
+    class SkylineEngineSound {
+      constructor() {
+        this.ctx = null;
+        this.gainNode = null;
+        this.oscillators = [];
+        this.subOsc = null;
+        this.filter = null;
+        this.waveshaper = null;
+        this.running = false;
+        this.targetRPM = 0;
+        this.currentRPM = 0;
+        this.lastTime = Date.now();
+
+        this.turboOsc = null;
+        this.turboGain = null;
+        this.turboNoise = null;
+        this.turboNoiseGain = null;
+
+        this.bovGain = null;
+        this.lastThrottle = 0;
+
+        this.brakeOsc = null;
+        this.brakeNoise = null;
+        this.brakeGain = null;
+        this.brakeActive = false;
+      }
+
+      init() {
+        if (this.ctx) return;
+
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        this.ctx = new AudioContextClass();
+
+        this.gainNode = this.ctx.createGain();
+        this.gainNode.gain.setValueAtTime(0.08, this.ctx.currentTime);
+        this.gainNode.connect(this.ctx.destination);
+
+        this.filter = this.ctx.createBiquadFilter();
+        this.filter.type = 'lowpass';
+        this.filter.frequency.setValueAtTime(250, this.ctx.currentTime);
+        this.filter.Q.setValueAtTime(3.0, this.ctx.currentTime);
+        this.filter.connect(this.gainNode);
+
+        this.waveshaper = this.ctx.createWaveShaper();
+        this.waveshaper.curve = this.makeDistortionCurve(40);
+        this.waveshaper.connect(this.filter);
+
+        const baseFreqs = [45, 45.3, 44.7];
+        baseFreqs.forEach((freq) => {
+          const osc = this.ctx.createOscillator();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+
+          const oscGain = this.ctx.createGain();
+          oscGain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+
+          osc.connect(oscGain);
+          oscGain.connect(this.waveshaper);
+          osc.start();
+
+          this.oscillators.push({ osc, oscGain, baseFreq: freq });
+        });
+
+        this.subOsc = this.ctx.createOscillator();
+        this.subOsc.type = 'triangle';
+        this.subOsc.frequency.setValueAtTime(22.5, this.ctx.currentTime);
+
+        const subGain = this.ctx.createGain();
+        subGain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+        this.subOsc.connect(subGain);
+        subGain.connect(this.filter);
+        this.subOsc.start();
+
+        this.oscillators.push({ osc: this.subOsc, oscGain: subGain, baseFreq: 22.5 });
+
+        // Turbo Spool
+        this.turboOsc = this.ctx.createOscillator();
+        this.turboOsc.type = 'sine';
+        this.turboOsc.frequency.setValueAtTime(1000, this.ctx.currentTime);
+
+        this.turboGain = this.ctx.createGain();
+        this.turboGain.gain.setValueAtTime(0.0, this.ctx.currentTime);
+        this.turboOsc.connect(this.turboGain);
+        this.turboGain.connect(this.gainNode);
+        this.turboOsc.start();
+
+        this.turboNoise = this.createNoiseNode();
+        const turboBP = this.ctx.createBiquadFilter();
+        turboBP.type = 'bandpass';
+        turboBP.frequency.setValueAtTime(1500, this.ctx.currentTime);
+        turboBP.Q.setValueAtTime(5.0, this.ctx.currentTime);
+
+        this.turboNoiseGain = this.ctx.createGain();
+        this.turboNoiseGain.gain.setValueAtTime(0.0, this.ctx.currentTime);
+
+        if (this.turboNoise) {
+          this.turboNoise.connect(turboBP);
+          turboBP.connect(this.turboNoiseGain);
+          this.turboNoiseGain.connect(this.gainNode);
+        }
+
+        // BOV (Blow-off valve)
+        this.bovGain = this.ctx.createGain();
+        this.bovGain.gain.setValueAtTime(0.0, this.ctx.currentTime);
+        const bovHP = this.ctx.createBiquadFilter();
+        bovHP.type = 'highpass';
+        bovHP.frequency.setValueAtTime(2500, this.ctx.currentTime);
+
+        const bovNoise = this.createNoiseNode();
+        if (bovNoise) {
+          bovNoise.connect(bovHP);
+          bovHP.connect(this.bovGain);
+          this.bovGain.connect(this.gainNode);
+        }
+
+        // Brake Squeal
+        this.brakeGain = this.ctx.createGain();
+        this.brakeGain.gain.setValueAtTime(0.0, this.ctx.currentTime);
+
+        this.brakeOsc = this.ctx.createOscillator();
+        this.brakeOsc.type = 'sine';
+        this.brakeOsc.frequency.setValueAtTime(2800, this.ctx.currentTime);
+
+        const brakeBP = this.ctx.createBiquadFilter();
+        brakeBP.type = 'bandpass';
+        brakeBP.frequency.setValueAtTime(2800, this.ctx.currentTime);
+        brakeBP.Q.setValueAtTime(10.0, this.ctx.currentTime);
+
+        const brakeNoise = this.createNoiseNode();
+        if (brakeNoise) {
+          brakeNoise.connect(brakeBP);
+          const brakeNoiseGain = this.ctx.createGain();
+          brakeNoiseGain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+          brakeNoise.connect(brakeNoiseGain);
+          brakeNoiseGain.connect(this.brakeGain);
+        }
+
+        this.brakeOsc.connect(this.brakeGain);
+        this.brakeGain.connect(this.gainNode);
+        this.brakeOsc.start();
+
+        this.running = true;
+        this.updateLoop();
+      }
+
+      makeDistortionCurve(amount) {
+        const k = typeof amount === 'number' ? amount : 50;
+        const n_samples = 44100;
+        const curve = new Float32Array(n_samples);
+        const deg = Math.PI / 180;
+        for (let i = 0; i < n_samples; ++i) {
+          const x = (i * 2) / n_samples - 1;
+          curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+        }
+        return curve;
+      }
+
+      createNoiseNode() {
+        if (!this.ctx) return null;
+        const bufferSize = 2 * this.ctx.sampleRate;
+        const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          output[i] = Math.random() * 2 - 1;
+        }
+        const whiteNoise = this.ctx.createBufferSource();
+        whiteNoise.buffer = noiseBuffer;
+        whiteNoise.loop = true;
+        whiteNoise.start();
+        return whiteNoise;
+      }
+
+      updateState(throttle, brake, speed) {
+        if (!this.running) return;
+
+        this.targetRPM = throttle;
+
+        if (this.lastThrottle > 0.5 && throttle < 0.1) {
+          this.triggerBOV();
+        }
+        this.lastThrottle = throttle;
+
+        if (brake > 0.05 && speed > 5) {
+          if (!this.brakeActive) {
+            this.brakeActive = true;
+            this.brakeGain.gain.setTargetAtTime(0.04 * brake, this.ctx.currentTime, 0.05);
+            this.brakeOsc.frequency.setTargetAtTime(2800 + Math.random() * 100, this.ctx.currentTime, 0.01);
+          } else {
+            this.brakeOsc.frequency.setValueAtTime(2800 + Math.sin(Date.now() / 20) * 40, this.ctx.currentTime);
+          }
+        } else {
+          if (this.brakeActive) {
+            this.brakeActive = false;
+            this.brakeGain.gain.setTargetAtTime(0.0, this.ctx.currentTime, 0.1);
+          }
+        }
+      }
+
+      triggerBOV() {
+        if (!this.ctx || !this.running) return;
+        const now = this.ctx.currentTime;
+        this.bovGain.gain.cancelScheduledValues(now);
+        this.bovGain.gain.setValueAtTime(0.3, now);
+        this.bovGain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+      }
+
+      updateLoop() {
+        if (!this.running) return;
+
+        requestAnimationFrame(() => this.updateLoop());
+
+        const now = Date.now();
+        const dt = (now - this.lastTime) / 1000;
+        this.lastTime = now;
+
+        const factor = this.targetRPM > this.currentRPM ? 3.5 : 2.0;
+        this.currentRPM += (this.targetRPM - this.currentRPM) * dt * factor;
+        this.currentRPM = Math.max(0.0, Math.min(1.0, this.currentRPM));
+
+        const t = this.ctx.currentTime;
+
+        const pitchMultiplier = 1.0 + this.currentRPM * 3.5;
+        this.oscillators.forEach(item => {
+          item.osc.frequency.setTargetAtTime(item.baseFreq * pitchMultiplier, t, 0.05);
+        });
+
+        const filterFreq = 180 + this.currentRPM * 1200;
+        this.filter.frequency.setTargetAtTime(filterFreq, t, 0.08);
+
+        if (this.currentRPM > 0.1) {
+          const turboVolume = Math.pow(this.currentRPM, 2.5) * 0.08;
+          const turboFreq = 900 + this.currentRPM * 1600;
+          this.turboGain.gain.setTargetAtTime(turboVolume, t, 0.1);
+          this.turboOsc.frequency.setTargetAtTime(turboFreq, t, 0.1);
+
+          const turboNoiseVol = Math.pow(this.currentRPM, 3) * 0.05;
+          this.turboNoiseGain.gain.setTargetAtTime(turboNoiseVol, t, 0.15);
+        } else {
+          this.turboGain.gain.setTargetAtTime(0.0, t, 0.2);
+          this.turboNoiseGain.gain.setTargetAtTime(0.0, t, 0.2);
+        }
+      }
+
+      setVolume(vol) {
+        if (this.gainNode) {
+          this.gainNode.gain.setValueAtTime(vol, this.ctx.currentTime);
+        }
+      }
+
+      stop() {
+        this.running = false;
+        if (this.ctx) {
+          this.ctx.close();
+          this.ctx = null;
+        }
         this.oscillators = [];
       }
     }
@@ -5412,7 +5667,288 @@
       void overlay.offsetWidth;
       overlay.classList.add('active');
 
-      
+      if (audioEnabled && engineSound && engineSound.ctx) {
+        const ctx = engineSound.ctx;
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(200, now);
+        osc.frequency.exponentialRampToValueAtTime(1200, now + 0.45);
+        gain.gain.setValueAtTime(0.0, now);
+        gain.gain.linearRampToValueAtTime(0.08, now + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(now + 0.5);
+      }
+
+      addLog('SYS', 'Menu Pemilihan RC Car (Tekken Select) Aktif!');
+    }
+
+    function selectFighter(idx) {
+      if (!selectActive) return;
+      if (selectedFighterIdx === idx) return;
+
+      for (let i = 1; i <= 6; i++) {
+        const slot = document.getElementById('fighter-slot-' + i);
+        if (slot) {
+          if (i === idx) {
+            slot.classList.add('active');
+          } else {
+            slot.classList.remove('active');
+          }
+        }
+      }
+
+      selectedFighterIdx = idx;
+      updateFighterUI();
+
+      if (occupiedCars.includes(idx)) {
+        playFighterLockedSFX();
+      } else {
+        playFighterHoverSFX();
+      }
+    }
+
+    function updateFighterUI() {
+      const data = fighterData[selectedFighterIdx];
+      if (!data) return;
+
+      const nameEl = document.getElementById('fighter-name');
+      const statusEl = document.getElementById('fighter-status');
+      const imgEl = document.getElementById('fighter-main-img');
+      const specsCard = document.getElementById('fighter-specs-card');
+
+      nameEl.textContent = data.name;
+      imgEl.src = data.img + '?v=' + Date.now();
+
+      const isLocked = occupiedCars.includes(selectedFighterIdx);
+      if (isLocked) {
+        statusEl.textContent = "LOCKED / OCCUPIED BY OTHER STEER";
+        statusEl.className = "fighter-status-label locked";
+        nameEl.classList.add('locked-text');
+        imgEl.classList.add('locked');
+        specsCard.classList.add('locked-border');
+      } else {
+        statusEl.textContent = "AVAILABLE";
+        statusEl.className = "fighter-status-label available";
+        nameEl.classList.remove('locked-text');
+        imgEl.classList.remove('locked');
+        specsCard.classList.remove('locked-border');
+      }
+
+      document.getElementById('fighter-stat-speed-val').textContent = data.speed + ' / 100';
+      document.getElementById('fighter-stat-speed-fill').style.width = data.speed + '%';
+
+      document.getElementById('fighter-stat-handling-val').textContent = data.handling + ' / 100';
+      document.getElementById('fighter-stat-handling-fill').style.width = data.handling + '%';
+
+      document.getElementById('fighter-stat-power-val').textContent = data.power + ' / 100';
+      document.getElementById('fighter-stat-power-fill').style.width = data.power + '%';
+
+      for (let i = 1; i <= 6; i++) {
+        const slot = document.getElementById('fighter-slot-' + i);
+        if (slot) {
+          if (occupiedCars.includes(i)) {
+            slot.classList.add('locked');
+          } else {
+            slot.classList.remove('locked');
+          }
+          if (i === selectedFighterIdx) {
+            slot.classList.add('active');
+          } else {
+            slot.classList.remove('active');
+          }
+        }
+      }
+    }
+
+    function confirmFighterSelect() {
+      if (!selectActive) return;
+
+      if (occupiedCars.includes(selectedFighterIdx)) {
+        playFighterLockedSFX();
+        addLog('ERR', 'RC Car ' + selectedFighterIdx + ' terkunci karena sedang dipakai setir lain!');
+        return;
+      }
+
+      const flash = document.getElementById('confirm-flash');
+      flash.classList.remove('active');
+      void flash.offsetWidth;
+      flash.classList.add('active');
+
+      playFighterConfirmSFX();
+
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: "select_car",
+          steer_index: currentViewSteer,
+          car_id: selectedFighterIdx
+        }));
+      }
+
+      addLog('SYS', 'Mengaktifkan kendaraan: ' + fighterData[selectedFighterIdx].name + ' (Channel ' + selectedFighterIdx + ')');
+
+      setTimeout(() => {
+        const overlay = document.getElementById('fighter-select-overlay');
+        overlay.classList.remove('active');
+        setTimeout(() => {
+          overlay.classList.add('hidden');
+          selectActive = false;
+        }, 500);
+      }, 1000);
+    }
+
+    function triggerRCSwitchOverlay(carId) {
+      const overlay = document.getElementById('rc-switch-overlay');
+      const channelText = document.getElementById('rc-switch-channel');
+      const carImg = document.getElementById('rc-switch-img');
+      if (!overlay || !channelText) return;
+
+      channelText.textContent = 'RC CAR CHANNEL ' + carId;
+
+      // Update image dynamically based on selected RC car (1 to 6)
+      if (carImg) {
+        const carIndex = (carId >= 1 && carId <= 6) ? carId : 1;
+        carImg.src = 'rc_car' + carIndex + '.png?v=' + Date.now();
+      }
+
+      if (overlayTimeout) clearTimeout(overlayTimeout);
+      if (overlayFadeTimeout) clearTimeout(overlayFadeTimeout);
+
+      overlay.classList.remove('hidden');
+      void overlay.offsetWidth;
+      overlay.classList.add('active');
+
+      // Sweeping high-tech sci-fi linking sound effect
+      if (audioEnabled && engineSound && engineSound.ctx) {
+        const ctx = engineSound.ctx;
+        const now = ctx.currentTime;
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc1.type = 'sine';
+        osc2.type = 'sine';
+
+        osc1.frequency.setValueAtTime(587.33, now); // D5
+        osc1.frequency.exponentialRampToValueAtTime(1174.66, now + 0.15); // D6
+
+        osc2.frequency.setValueAtTime(880, now); // A5
+        osc2.frequency.exponentialRampToValueAtTime(1760, now + 0.15); // A6
+
+        gain.gain.setValueAtTime(0.0, now);
+        gain.gain.linearRampToValueAtTime(0.12, now + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc1.start();
+        osc2.start();
+        osc1.stop(now + 0.6);
+        osc2.stop(now + 0.6);
+      }
+
+      overlayTimeout = setTimeout(() => {
+        overlay.classList.remove('active');
+        overlayFadeTimeout = setTimeout(() => {
+          overlay.classList.add('hidden');
+        }, 400);
+      }, 2200);
+    }
+
+    function toggleAudio() {
+      audioEnabled = !audioEnabled;
+      const btn = document.getElementById('btn-audio');
+      if (audioEnabled) {
+        btn.textContent = '🔊 SOUND: ON';
+        btn.style.borderColor = 'var(--green)';
+        btn.style.color = 'var(--green)';
+        if (!engineSound) {
+          engineSound = new SkylineEngineSound();
+        }
+        engineSound.init();
+        engineSound.setVolume(0.08);
+        addLog('SYS', 'Audio Engine Diaktifkan');
+      } else {
+        btn.textContent = '🔊 SOUND: OFF';
+        btn.style.borderColor = 'var(--yellow)';
+        btn.style.color = 'var(--yellow)';
+        if (engineSound) {
+          engineSound.stop();
+          engineSound = null;
+        }
+        addLog('SYS', 'Audio Engine Dimatikan');
+      }
+    }
+
+    // ─── Play Session Timer Logic ──────────────────────────────────────────────
+
+    function startPlayTimer() {
+      if (playTimerInterval) {
+        clearInterval(playTimerInterval);
+      }
+      playTimeRemaining = playDurationMinutes * 60;
+      updatePlayTimerDisplay();
+      playTimerInterval = setInterval(updatePlayCountdown, 1000);
+    }
+
+    function stopPlayTimer() {
+      if (playTimerInterval) {
+        clearInterval(playTimerInterval);
+        playTimerInterval = null;
+      }
+      const containerEl = document.getElementById('hud-timer-overlay');
+      if (containerEl) {
+        containerEl.classList.remove('warning');
+      }
+    }
+
+    function startNextPlayerTransition() {
+      const overlay = document.getElementById('next-player-overlay');
+      const countEl = document.getElementById('next-player-countdown-num');
+      const barFill = document.getElementById('hud-next-player-bar-fill');
+      if (!overlay || !countEl) {
+        toggleHUDMode(false);
+        return;
+      }
+
+      overlay.classList.remove('hidden');
+      void overlay.offsetWidth;
+      overlay.classList.add('active');
+
+      let countdown = 10;
+      countEl.textContent = countdown;
+      if (barFill) {
+        barFill.style.transition = 'none';
+        barFill.style.width = '100%';
+        void barFill.offsetWidth;
+        barFill.style.transition = 'width 10s linear';
+        barFill.style.width = '0%';
+      }
+
+      function playWarningBeep(freq, duration) {
+        if (audioEnabled && engineSound && engineSound.ctx) {
+          try {
+            const ctx = engineSound.ctx;
+            const now = ctx.currentTime;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(freq, now);
+            gain.gain.setValueAtTime(0.0, now);
+            gain.gain.linearRampToValueAtTime(0.15, now + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(now + duration);
+          } catch (e) { }
+        }
       }
 
       playWarningBeep(523.25, 0.4);
