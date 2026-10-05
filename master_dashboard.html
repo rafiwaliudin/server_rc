@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Steering Wheel Dashboard</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap');
+
+    :root {
+      --bg: #0a0c10;
+      --bg2: #111318;
+      --bg3: #181c24;
+      --border: rgba(255, 255, 255, 0.08);
+      --border2: rgba(255, 255, 255, 0.15);
+      --accent: #00e5ff;
+      --accent2: #ff6d00;
+      --green: #00e676;
+      --red: #ff1744;
+      --yellow: #ffea00;
+      --text: #e8eaf0;
+      --muted: #5a6070;
+      --font-mono: 'Share Tech Mono', monospace;
+      --font-ui: 'Rajdhani', sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-ui);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ─── Header ─────────────────────────────── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg2);
+    }
+
+    .logo {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+
+    .logo span {
+      color: var(--text);
+    }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      font-size: 13px;
+      font-family: var(--font-mono);
+    }
+
+    .status-dot {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: all 0.3s;
+    }
+
+    .dot.ws-on {
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+    }
+
+    .dot.ctrl-on {
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+    }
+
+    .dot.esp-on {
+      background: var(--accent2);
+      box-shadow: 0 0 8px var(--accent2);
+    }
+
+    /* ─── Layout ─────────────────────────────── */
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 2fr 1fr;
+      gap: 16px;
+      padding: 16px;
+      min-height: calc(100vh - 57px);
+      position: relative;
+      z-index: 2;
+    }
+
+    /* ─── Video Background ───────────────────── */
+    #video-bg-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+      z-index: 1;
+      display: none;
+      overflow: hidden;
+    }
+
+    #video-bg {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* ─── Floating Dashboard Mode ─────────────── */
+    body.floating-mode {
+      background: transparent;
+    }
+
+    body.floating-mode .header {
+      position: relative;
+      z-index: 10;
+      background: rgba(10, 12, 16, 0.45);
+      backdrop-filter: blur(6px);
+      border-bottom-color: rgba(255, 255, 255, 0.06);
+    }
+
+    body.floating-mode .panel {
+      background: rgba(10, 12, 16, 0.1);
+      backdrop-filter: blur(2px);
+      border-color: rgba(255, 255, 255, 0.05);
+      box-shadow: none;
+    }
+
+    /* Center panel specific transparency */
+    .panel.center-panel {
+      background: transparent !important;
+      backdrop-filter: none !important;
+      border-color: transparent !important;
+      box-shadow: none !important;
+    }
+
+    /* Hide classes */
+    .panel.hidden {
+      display: none !important;
+    }
+
+    .grid.no-side-panels {
+      grid-template-columns: 1fr !important;
+    }
+
+    .grid.no-left-panel {
+      grid-template-columns: 2fr 1fr !important;
+    }
+
+    .grid.no-right-panel {
+      grid-template-columns: 1fr 2fr !important;
+    }
+
+    body.floating-mode .log-box {
+      background: rgba(0, 0, 0, 0.25);
+    }
+
+    body.floating-mode .cal-item {
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    body.floating-mode .gauge-bar-bg {
+      background: rgba(0, 0, 0, 0.3);
+    }
+
+    body.floating-mode .vbar-container {
+      background: rgba(0, 0, 0, 0.3);
+    }
+
+    body.floating-mode .axis-track {
+      background: rgba(0, 0, 0, 0.3);
+    }
+
+    body.floating-mode .btn-dot {
+      background: rgba(0, 0, 0, 0.25);
+    }
+
+    body.floating-mode .btn-save {
+      opacity: 0.8;
+    }
+
+    .panel {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .panel-title {
+      font-size: 11px;
+      letter-spacing: 3px;
+      color: var(--muted);
+      text-transform: uppercase;
+      font-family: var(--font-mono);
+    }
+
+    /* ─── Steering Wheel ─────────────────────── */
+    .center-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+
+    #wheel-canvas {
+      width: 320px;
+      height: 320px;
+      cursor: none;
+    }
+
+    .angle-display {
+      font-size: 64px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--accent);
+      line-height: 1;
+      text-align: center;
+      letter-spacing: -2px;
+    }
+
+    .angle-label {
+      font-size: 14px;
+      color: var(--muted);
+      letter-spacing: 2px;
+      text-align: center;
+      margin-top: 4px;
+    }
+
+    .direction-badge {
+      padding: 6px 20px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      font-family: var(--font-mono);
+      border: 1px solid;
+      transition: all 0.15s;
+    }
+
+    .dir-left {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(0, 229, 255, 0.08);
+    }
+
+    .dir-right {
+      border-color: var(--accent2);
+      color: var(--accent2);
+      background: rgba(255, 109, 0, 0.08);
+    }
+
+    .dir-center {
+      border-color: var(--muted);
+      color: var(--muted);
+      background: transparent;
+    }
+
+    /* ─── Gauge: Gas & Rem ───────────────────── */
+    .pedal-gauges {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      flex: 1;
+    }
+
+    .gauge-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .gauge-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    .gauge-name {
+      font-size: 12px;
+      letter-spacing: 2px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+    }
+
+    .gauge-val {
+      font-size: 28px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      line-height: 1;
+    }
+
+    .gauge-val.gas {
+      color: var(--green);
+    }
+
+    .gauge-val.brk {
+      color: var(--red);
+    }
+
+    .gauge-bar-bg {
+      height: 12px;
+      background: var(--bg3);
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .gauge-bar {
+      height: 100%;
+      border-radius: 6px;
+      width: 0%;
+      transition: width 0.08s ease-out;
+    }
+
+    .gauge-bar.gas {
+      background: linear-gradient(90deg, #00c853, #69f0ae);
+      box-shadow: 0 0 12px rgba(0, 230, 118, 0.6);
+    }
+
+    .gauge-bar.brk {
+      background: linear-gradient(90deg, #c62828, #ff5252);
+      box-shadow: 0 0 12px rgba(255, 23, 68, 0.6);
+    }
+
+    .gauge-ticks {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      margin-top: 2px;
+    }
+
+    /* ─── Vertical GAS bar ───────────────────── */
+    .vbar-group {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      align-items: flex-end;
+      height: 200px;
+    }
+
+    .vbar-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      height: 100%;
+    }
+
+    .vbar-container {
+      flex: 1;
+      width: 48px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      align-items: flex-end;
+      position: relative;
+    }
+
+    .vbar-fill {
+      width: 100%;
+      border-radius: 6px;
+      height: 0%;
+      transition: height 0.08s ease-out;
+    }
+
+    .vbar-fill.gas {
+      background: linear-gradient(0deg, #00c853, #69f0ae);
+    }
+
+    .vbar-fill.brk {
+      background: linear-gradient(0deg, #c62828, #ff5252);
+    }
+
+    .vbar-label {
+      font-size: 10px;
+      letter-spacing: 1px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+    }
+
+    .vbar-pct {
+      font-size: 14px;
+      font-family: var(--font-mono);
+      font-weight: 700;
+    }
+
+    .vbar-pct.gas {
+      color: var(--green);
+    }
+
+    .vbar-pct.brk {
+      color: var(--red);
+    }
+
+    /* ─── Raw Axis ───────────────────────────── */
+    .axis-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .axis-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .axis-name {
+      width: 60px;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .axis-track {
+      flex: 1;
+      height: 6px;
+      background: var(--bg3);
+      border-radius: 3px;
+      position: relative;
+      overflow: visible;
+    }
+
+    .axis-thumb {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      position: absolute;
+      top: -2px;
+      left: 50%;
+      transform: translateX(-50%);
+      transition: left 0.06s ease-out;
+      box-shadow: 0 0 6px var(--accent);
+    }
+
+    .axis-center-mark {
+      position: absolute;
+      left: 50%;
+      top: -2px;
+      width: 1px;
+      height: 10px;
+      background: var(--border2);
+      transform: translateX(-50%);
+    }
+
+    .axis-val {
+      width: 52px;
+      text-align: right;
+      color: var(--text);
+      font-size: 11px;
+    }
+
+    /* ─── Buttons Grid ───────────────────────── */
+    .btn-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 6px;
+    }
+
+    .btn-dot {
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-family: var(--font-mono);
+      color: var(--muted);
+      transition: all 0.1s;
+    }
+
+    .btn-dot.pressed {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #000;
+      box-shadow: 0 0 10px var(--accent);
+    }
+
+    /* ─── ESP32 Log ──────────────────────────── */
+    .log-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--green);
+      height: 140px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column-reverse;
+    }
+
+    .log-line {
+      opacity: 0.7;
+      margin-bottom: 2px;
+    }
+
+    .log-line:last-child {
+      opacity: 1;
+    }
+
+    .log-ts {
+      color: var(--muted);
+      margin-right: 8px;
+    }
+
+    /* ─── Calibrate Panel ────────────────────── */
+    .cal-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .cal-item {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+    }
+
+    .cal-key {
+      font-size: 10px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+
+    .cal-input {
+      width: 100%;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--border2);
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-size: 14px;
+      padding: 2px 0;
+      outline: none;
+    }
+
+    .cal-input:focus {
+      border-bottom-color: var(--accent);
+    }
+
+    .btn-save {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 20px;
+      font-family: var(--font-ui);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      cursor: pointer;
+      width: 100%;
+      transition: opacity 0.2s;
+    }
+
+    .btn-save:hover {
+      opacity: 0.85;
+    }
+
+    /* ─── WS Config ──────────────────────────── */
+    .ws-config {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .ws-input {
+      flex: 1;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      outline: none;
+    }
+
+    .ws-input:focus {
+      border-color: var(--accent);
+    }
+
+    .btn-connect {
+      background: transparent;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      border-radius: 6px;
+      padding: 8px 14px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: all 0.2s;
+    }
+
+    .btn-connect:hover {
+      background: rgba(0, 229, 255, 0.1);
+    }
+
+    /* ─── HZ Display ─────────────────────────── */
+    .hz-display {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .hz-display span {
+      color: var(--green);
+    }
+
+    /* ─── Scrollbar ──────────────────────────── */
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border2);
+      border-radius: 2px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="header">
+    <div class="logo">ALFABETA<span>.</span>STEERING WHEEL</div>
+    <div class="status-bar">
+      <div class="status-dot">
+        <div class="dot" id="dot-ws"></div>
+        <span id="lbl-ws">WS: —</span>
+      </div>
+      <div class="status-dot">
+        <div class="dot" id="dot-ctrl"></div>
+        <span id="lbl-ctrl">CTRL: —</span>
+      </div>
+      <div class="hz-display">UPDATE <span id="hz-val">0</span> Hz</div>
+      <div class="hz-display" style="margin-left:10px; border-left:1px solid var(--border); padding-left:15px;">
+        RC CAR: <span id="car-id-val" style="color:var(--accent); font-weight:bold; font-size:14px;">?</span>
+      </div>
+      
+      <div class="ws-config" style="margin-left: 10px; border-left: 1px solid var(--border); padding-left: 15px; gap: 4px;">
+        <button class="btn-connect active-steer-btn" id="btn-view-0" onclick="setViewSteer(0)" style="border-color: var(--accent); color: var(--bg); background: var(--accent);">ST-1</button>
+        <button class="btn-connect" id="btn-view-1" onclick="setViewSteer(1)" style="border-color: var(--muted); color: var(--muted);">ST-2</button>
+        <button class="btn-connect" id="btn-view-2" onclick="setViewSteer(2)" style="border-color: var(--muted); color: var(--muted);">ST-3</button>
+      </div>
+
+      <div class="ws-config" style="margin-left: 10px; border-left: 1px solid var(--border); padding-left: 15px; gap: 4px;">
+        <button class="btn-connect" onclick="togglePanel('left')" style="border-color: var(--muted); color: var(--muted);">L-UI</button>
+        <button class="btn-connect" onclick="togglePanel('right')" style="border-color: var(--muted); color: var(--muted);">R-UI</button>
+      </div>
+
+      <div class="ws-config" style="margin-left: 10px; border-left: 1px solid var(--border); padding-left: 15px;">
+        <input class="ws-input" id="rtsp-url" placeholder="Source (0 or RTSP)" style="width: 150px;" />
+        <button class="btn-connect" id="btn-rtsp" onclick="startRTSP()" style="border-color: var(--accent2); color: var(--accent2);">STREAM</button>
+      </div>
+
+      <div class="ws-config">
+        <input class="ws-input" id="ws-url" value="ws://localhost:8888" style="width: 180px;" />
+        <button class="btn-connect" id="btn-conn" onclick="toggleWS()">CONNECT</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="video-bg-container">
+    <img id="video-bg" src="" alt="Stream Offline">
+  </div>
+
+  <div class="grid">
+
+    <!-- ── Left Panel ── -->
+    <div class="panel" id="panel-left">
+      <div class="panel-title">Pedal Input</div>
+
+      <div class="vbar-group">
+        <div class="vbar-wrap">
+          <div class="vbar-pct gas" id="throttle-pct">0%</div>
+          <div class="vbar-container">
+            <div class="vbar-fill gas" id="throttle-vbar"></div>
+          </div>
+          <div class="vbar-label">GAS</div>
+        </div>
+        <div class="vbar-wrap">
+          <div class="vbar-pct brk" id="brake-pct">0%</div>
+          <div class="vbar-container">
+            <div class="vbar-fill brk" id="brake-vbar"></div>
+          </div>
+          <div class="vbar-label">REM</div>
+        </div>
+      </div>
+
+      <div class="panel-title" style="margin-top: 8px;">Raw Axis</div>
+      <div class="axis-list" id="axis-list">
+        <div class="axis-row">
+          <span class="axis-name">STEER</span>
+          <div class="axis-track">
+            <div class="axis-center-mark"></div>
+            <div class="axis-thumb" id="ax-steer-thumb" style="left:50%"></div>
+          </div>
+          <span class="axis-val" id="ax-steer-val">0.0000</span>
+        </div>
+        <div class="axis-row">
+          <span class="axis-name">THROTTLE</span>
+          <div class="axis-track">
+            <div class="axis-center-mark"></div>
+            <div class="axis-thumb" id="ax-thr-thumb"
+              style="left:50%; background: var(--green); box-shadow: 0 0 6px var(--green);"></div>
+          </div>
+          <span class="axis-val" id="ax-thr-val">0.0000</span>
+        </div>
+        <div class="axis-row">
+          <span class="axis-name">BRAKE</span>
+          <div class="axis-track">
+            <div class="axis-center-mark"></div>
+            <div class="axis-thumb" id="ax-brk-thumb"
+              style="left:50%; background: var(--red); box-shadow: 0 0 6px var(--red);"></div>
+          </div>
+          <span class="axis-val" id="ax-brk-val">0.0000</span>
+        </div>
+      </div>
+
+      <div class="panel-title" style="margin-top: 8px;">Tombol</div>
+      <div class="btn-grid" id="btn-grid"></div>
+    </div>
+
+    <!-- ── Center Panel ── -->
+    <div class="panel center-panel">
+      <div class="panel-title" style="text-align: center;">Steering Wheel</div>
+
+      <canvas id="wheel-canvas" width="320" height="320"></canvas>
+
+      <div class="angle-display" id="angle-display">0.0°</div>
+      <div class="angle-label">SUDUT KEMUDI</div>
+
+      <div class="direction-badge dir-center" id="dir-badge">CENTER</div>
+
+      <div style="display: flex; gap: 24px; width: 100%; margin-top: 8px;">
+        <div class="gauge-wrap" style="flex:1">
+          <div class="gauge-header">
+            <span class="gauge-name">GAS</span>
+            <span class="gauge-val gas" id="throttle-big">0%</span>
+          </div>
+          <div class="gauge-bar-bg">
+            <div class="gauge-bar gas" id="throttle-bar"></div>
+          </div>
+          <div class="gauge-ticks"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+        </div>
+        <div class="gauge-wrap" style="flex:1">
+          <div class="gauge-header">
+            <span class="gauge-name">REM</span>
+            <span class="gauge-val brk" id="brake-big">0%</span>
+          </div>
+          <div class="gauge-bar-bg">
+            <div class="gauge-bar brk" id="brake-bar"></div>
+          </div>
+          <div class="gauge-ticks"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Right Panel ── -->
+    <div class="panel" id="panel-right">
+      <div class="panel-title">ESP32 Output</div>
+      <div class="log-box" id="esp-log">
+        <div class="log-line"><span class="log-ts">--:--:--</span>Menunggu koneksi...</div>
+      </div>
+
+      <div class="panel-title">Kalibrasi</div>
+      <div class="cal-grid" id="cal-grid">
+        <div class="cal-item">
+          <div class="cal-key">STEER CENTER</div>
+          <input class="cal-input" id="cal-sc" type="number" step="0.001" value="0.000">
+        </div>
+        <div class="cal-item">
+          <div class="cal-key">STEER RANGE</div>
+          <input class="cal-input" id="cal-sr" type="number" step="0.001" value="1.000">
+        </div>
+        <div class="cal-item">
+          <div class="cal-key">MAX ANGLE °</div>
+          <input class="cal-input" id="cal-ma" type="number" step="1" value="90">
+        </div>
+        <div class="cal-item">
+          <div class="cal-key">DEADZONE STEER</div>
+          <input class="cal-input" id="cal-ds" type="number" step="0.001" value="0.02">
+        </div>
+        <div class="cal-item">
+          <div class="cal-key">THROTTLE MIN</div>
+          <input class="cal-input" id="cal-tm" type="number" step="0.001" value="-1.000">
+        </div>
+        <div class="cal-item">
+          <div class="cal-key">DEADZONE PEDAL</div>
+          <input class="cal-input" id="cal-dp" type="number" step="0.001" value="0.02">
+        </div>
+      </div>
+      <button class="btn-save" onclick="saveCalibration()">SIMPAN KALIBRASI</button>
+
+      <div class="panel-title">Informasi</div>
+      <div style="font-family: var(--font-mono); font-size: 11px; color: var(--muted); line-height: 1.8;">
+        <div>Timestamp: <span id="info-ts" style="color: var(--text);">—</span></div>
+        <div>Latency: <span id="info-lat" style="color: var(--accent);">— ms</span></div>
+        <div>Paket recv: <span id="info-pkt" style="color: var(--text);">0</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // ─── State ─────────────────────────────────────────────────────────────────
+
+    let ws = null;
+    let ctrlData = {
+      steering_angle: 0,
+      steering_direction: 'CENTER',
+      steering_raw: 0,
+      throttle: 0,
+      brake: 0,
+      buttons: {},
+      connected: false,
+      timestamp: 0
+    };
+
+    let lastTs = 0, pktCount = 0, fpsCalc = 0, lastFpsTime = Date.now();
+    let hzHistory = [], hzInterval = null;
+    let currentViewSteer = 0; // Default view Setir 1
+
+    function setViewSteer(idx) {
+      currentViewSteer = idx;
+      for(let i=0; i<3; i++) {
+        let btn = document.getElementById('btn-view-' + i);
+        if(!btn) continue;
+        if(i === idx) {
+          btn.style.borderColor = 'var(--accent)';
+          btn.style.color = 'var(--bg)';
+          btn.style.background = 'var(--accent)';
+        } else {
+          btn.style.borderColor = 'var(--muted)';
+          btn.style.color = 'var(--muted)';
+          btn.style.background = 'transparent';
+        }
+      }
+    }
+
+    // ─── WebSocket ──────────────────────────────────────────────────────────────
+
+    function toggleWS() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+        return;
+      }
+      const url = document.getElementById('ws-url').value.trim();
+      connectWS(url);
+    }
+
+    function connectWS(url) {
+      try {
+        ws = new WebSocket(url);
+
+        ws.onopen = () => {
+          setDot('ws', true, 'WS: OK');
+          document.getElementById('btn-conn').textContent = 'DISCONNECT';
+          addLog('SYS', 'Terhubung ke ' + url);
+          ws.send(JSON.stringify({ type: 'get_config' }));
+        };
+
+        ws.onclose = () => {
+          setDot('ws', false, 'WS: OFF');
+          setDot('ctrl', false, 'CTRL: OFF');
+          document.getElementById('btn-conn').textContent = 'CONNECT';
+          addLog('SYS', 'Koneksi terputus');
+          setTimeout(() => connectWS(url), 3000);
+        };
+
+        ws.onerror = (e) => {
+          addLog('ERR', 'WebSocket error');
+        };
+
+        ws.onmessage = (evt) => {
+          const msg = JSON.parse(evt.data);
+          handleMessage(msg);
+        };
+      } catch (e) {
+        addLog('ERR', e.message);
+      }
+    }
+
+    function handleMessage(msg) {
+      if (msg.type === 'controller_data') {
+        // Filter based on selected steer view
+        if (msg.steer_index !== undefined && msg.steer_index !== currentViewSteer) {
+          return;
+        }
+
+        const now = Date.now();
+        const lat = lastTs ? (now - lastTs) : 0;
+        lastTs = now;
+        pktCount++;
+
+        ctrlData = msg.data;
+
+        hzHistory.push(now);
+        hzHistory = hzHistory.filter(t => now - t < 1000);
+        document.getElementById('hz-val').textContent = hzHistory.length;
+        document.getElementById('info-lat').textContent = lat + ' ms';
+        document.getElementById('info-pkt').textContent = pktCount;
+        document.getElementById('info-ts').textContent = new Date(ctrlData.timestamp * 1000).toLocaleTimeString();
+        
+        if (ctrlData.active_car_id !== undefined) {
+          document.getElementById('car-id-val').textContent = ctrlData.active_car_id;
+        }
+
+        setDot('ctrl', ctrlData.connected, 'CTRL: ' + (ctrlData.connected ? 'ON' : 'OFF'));
+        updateUI();
+      } else if (msg.type === 'config') {
+        applyConfig(msg.data);
+      } else if (msg.type === 'config_updated') {
+        addLog('CAL', 'Kalibrasi tersimpan');
+      }
+    }
+
+    // ─── UI Updates ─────────────────────────────────────────────────────────────
+
+    function updateUI() {
+      const d = ctrlData;
+
+      // Steering angle
+      document.getElementById('angle-display').textContent = d.steering_angle.toFixed(1) + '°';
+
+      // Direction badge
+      const badge = document.getElementById('dir-badge');
+      badge.textContent = d.steering_direction;
+      badge.className = 'direction-badge dir-' + d.steering_direction.toLowerCase();
+
+      // Pedal bars horizontal
+      const tPct = Math.round(d.throttle * 100);
+      const bPct = Math.round(d.brake * 100);
+      document.getElementById('throttle-bar').style.width = tPct + '%';
+      document.getElementById('brake-bar').style.width = bPct + '%';
+      document.getElementById('throttle-big').textContent = tPct + '%';
+      document.getElementById('brake-big').textContent = bPct + '%';
+
+      // Vertical bars
+      document.getElementById('throttle-vbar').style.height = tPct + '%';
+      document.getElementById('brake-vbar').style.height = bPct + '%';
+      document.getElementById('throttle-pct').textContent = tPct + '%';
+      document.getElementById('brake-pct').textContent = bPct + '%';
+
+      // Axis thumbs (map -1..1 to 0..100%)
+      setAxisThumb('ax-steer', d.steering_raw, d.steering_raw.toFixed(4));
+      setAxisThumb('ax-thr', d.throttle * 2 - 1, d.throttle.toFixed(3));
+      setAxisThumb('ax-brk', d.brake * 2 - 1, d.brake.toFixed(3));
+
+      // Buttons
+      updateButtons(d.buttons);
+
+      // Draw wheel
+      drawWheel(d.steering_angle);
+
+      // ESP log (only significant changes)
+      if (Math.abs(d.steering_angle) > 1 || d.throttle > 0.01 || d.brake > 0.01) {
+        if (pktCount % 10 === 0) {
+          addLog('RC', `STR:${d.steering_angle.toFixed(1)}° GAS:${tPct}% REM:${bPct}%`);
+        }
+      }
+    }
+
+    function setAxisThumb(id, val, label) {
+      const pct = ((val + 1) / 2 * 100).toFixed(1);
+      const el = document.getElementById(id + '-thumb');
+      if (el) el.style.left = pct + '%';
+      const vEl = document.getElementById(id + '-val');
+      if (vEl) vEl.textContent = label;
+    }
+
+    function updateButtons(btns) {
+      const grid = document.getElementById('btn-grid');
+      const keys = Object.keys(btns);
+      if (grid.children.length !== keys.length) {
+        grid.innerHTML = '';
+        keys.forEach(k => {
+          const d = document.createElement('div');
+          d.className = 'btn-dot';
+          d.id = 'btn-' + k;
+          d.textContent = k.replace('btn_', '');
+          grid.appendChild(d);
+        });
+      }
+      keys.forEach(k => {
+        const el = document.getElementById('btn-' + k);
+        if (el) el.className = 'btn-dot' + (btns[k] ? ' pressed' : '');
+      });
+    }
+
+    // ─── Steering Wheel Canvas ──────────────────────────────────────────────────
+
+    const canvas = document.getElementById('wheel-canvas');
+    const ctx = canvas.getContext('2d');
+    const W = 320, H = 320, CX = 160, CY = 160;
+
+    function drawWheel(angle) {
+      ctx.clearRect(0, 0, W, H);
+      const rad = (angle * Math.PI) / 180;
+
+      ctx.save();
+      ctx.translate(CX, CY);
+      ctx.rotate(rad);
+
+      // Outer ring
+      ctx.beginPath();
+      ctx.arc(0, 0, 120, 0, Math.PI * 2);
+      ctx.lineWidth = 16;
+      ctx.strokeStyle = angle > 1 ? '#ff6d00' : angle < -1 ? '#00e5ff' : '#2a3040';
+      ctx.stroke();
+
+      // Grip tapes
+      const grips = [0, Math.PI * 0.5, Math.PI, Math.PI * 1.5];
+      grips.forEach(a => {
+        ctx.beginPath();
+        ctx.arc(0, 0, 120, a - 0.35, a + 0.35);
+        ctx.lineWidth = 20;
+        ctx.strokeStyle = '#1a2030';
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, 0, 120, a - 0.3, a + 0.3);
+        ctx.lineWidth = 14;
+        ctx.strokeStyle = '#2c3550';
+        ctx.stroke();
+      });
+
+      // Spokes
+      const spokeAngles = [-Math.PI * 0.25, Math.PI * 0.25, Math.PI * 0.5];
+      spokeAngles.forEach(a => {
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * 28, Math.sin(a) * 28);
+        ctx.lineTo(Math.cos(a) * 108, Math.sin(a) * 108);
+        ctx.lineWidth = 8;
+        ctx.strokeStyle = '#1e2535';
+        ctx.stroke();
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = '#2a3548';
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a + Math.PI) * 28, Math.sin(a + Math.PI) * 28);
+        ctx.lineTo(Math.cos(a + Math.PI) * 108, Math.sin(a + Math.PI) * 108);
+        ctx.lineWidth = 8;
+        ctx.strokeStyle = '#1e2535';
+        ctx.stroke();
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = '#2a3548';
+        ctx.stroke();
+      });
+
+      // Center hub
+      ctx.beginPath();
+      ctx.arc(0, 0, 28, 0, Math.PI * 2);
+      ctx.fillStyle = '#151a24';
+      ctx.fill();
+      ctx.strokeStyle = '#2a3548';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Center mark (top indicator)
+      ctx.beginPath();
+      ctx.moveTo(0, -8);
+      ctx.lineTo(0, -20);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = angle > 1 ? '#ff6d00' : angle < -1 ? '#00e5ff' : '#5a6070';
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      ctx.restore();
+
+      // Fixed reference marks at top
+      ctx.save();
+      ctx.translate(CX, CY);
+      // Center top mark
+      ctx.beginPath();
+      ctx.moveTo(0, -130);
+      ctx.lineTo(0, -142);
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Scale marks -90 and +90
+      [-90, 90].forEach(deg => {
+        const r = deg * Math.PI / 180;
+        const x1 = Math.sin(r) * 130, y1 = -Math.cos(r) * 130;
+        const x2 = Math.sin(r) * 142, y2 = -Math.cos(r) * 142;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.strokeStyle = '#333a48';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      });
+
+      // Arc indicator for steering angle
+      if (Math.abs(angle) > 0.5) {
+        ctx.beginPath();
+        const startAngle = -Math.PI / 2;
+        const endAngle = startAngle + rad;
+        ctx.arc(0, 0, 140, Math.min(startAngle, endAngle), Math.max(startAngle, endAngle));
+        ctx.strokeStyle = angle > 0 ? 'rgba(255,109,0,0.5)' : 'rgba(0,229,255,0.5)';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    drawWheel(0);
+
+    // ─── Log ────────────────────────────────────────────────────────────────────
+
+    function addLog(tag, msg) {
+      const box = document.getElementById('esp-log');
+      const ts = new Date().toLocaleTimeString('id', { hour12: false });
+      const line = document.createElement('div');
+      line.className = 'log-line';
+      line.innerHTML = `<span class="log-ts">${ts}</span>[${tag}] ${msg}`;
+      box.prepend(line);
+      if (box.children.length > 50) box.lastChild.remove();
+    }
+
+    // ─── Dots ────────────────────────────────────────────────────────────────────
+
+    function setDot(id, on, label) {
+      const dot = document.getElementById('dot-' + id);
+      const lbl = document.getElementById('lbl-' + id);
+      if (dot) dot.className = 'dot' + (on ? ' ' + id + '-on' : '');
+      if (lbl) lbl.textContent = label;
+    }
+
+    // ─── Calibration ────────────────────────────────────────────────────────────
+
+    function applyConfig(cfg) {
+      const cal = cfg.calibration || {};
+      document.getElementById('cal-sc').value = (cal.steering_center ?? 0).toFixed(4);
+      document.getElementById('cal-sr').value = (cal.steering_range ?? 1).toFixed(4);
+      document.getElementById('cal-ma').value = cal.steering_max_angle ?? 90;
+      document.getElementById('cal-ds').value = (cal.deadzone_steering ?? 0.02).toFixed(3);
+      document.getElementById('cal-tm').value = (cal.throttle_min ?? -1).toFixed(4);
+      document.getElementById('cal-dp').value = (cal.deadzone_pedal ?? 0.02).toFixed(3);
+    }
+
+    function saveCalibration() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        addLog('ERR', 'Tidak terhubung ke server!');
+        return;
+      }
+      const fields = [
+        { section: 'calibration', key: 'steering_center', id: 'cal-sc' },
+        { section: 'calibration', key: 'steering_range', id: 'cal-sr' },
+        { section: 'calibration', key: 'steering_max_angle', id: 'cal-ma' },
+        { section: 'calibration', key: 'deadzone_steering', id: 'cal-ds' },
+        { section: 'calibration', key: 'throttle_min', id: 'cal-tm' },
+        { section: 'calibration', key: 'deadzone_pedal', id: 'cal-dp' },
+      ];
+      fields.forEach(f => {
+        ws.send(JSON.stringify({
+          type: 'update_config',
+          section: f.section,
+          key: f.key,
+          value: parseFloat(document.getElementById(f.id).value)
+        }));
+      });
+      addLog('CAL', 'Mengirim data kalibrasi...');
+    }
+
+    // ─── RTSP Streaming ────────────────────────────────────────────────────────
+    
+    function startRTSP() {
+      const url = document.getElementById('rtsp-url').value.trim();
+      if (!url) {
+        addLog('ERR', 'Masukkan URL RTSP!');
+        return;
+      }
+
+      addLog('SYS', 'Menghubungkan ke RTSP via Bridge...');
+      
+      // Update bridge server about the new RTSP URL
+      fetch('http://localhost:5000/set_rtsp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url })
+      })
+      .then(res => res.json())
+      .then(data => {
+        addLog('SYS', 'RTSP Bridge OK. Memulai stream...');
+        const videoBg = document.getElementById('video-bg');
+        const container = document.getElementById('video-bg-container');
+        
+        // Cache busting for the image stream
+        videoBg.src = 'http://localhost:5000/video_feed?t=' + Date.now();
+        container.style.display = 'block';
+        document.body.classList.add('floating-mode');
+        
+        document.getElementById('btn-rtsp').textContent = 'STOP';
+        document.getElementById('btn-rtsp').onclick = stopRTSP;
+      })
+      .catch(err => {
+        addLog('ERR', 'Gagal hubung ke Bridge (pastikan video_bridge.py jalan)');
+      });
+    }
+
+    function stopRTSP() {
+      const videoBg = document.getElementById('video-bg');
+      const container = document.getElementById('video-bg-container');
+      
+      videoBg.src = '';
+      container.style.display = 'none';
+      document.body.classList.remove('floating-mode');
+      
+      document.getElementById('btn-rtsp').textContent = 'STREAM';
+      document.getElementById('btn-rtsp').onclick = startRTSP;
+      addLog('SYS', 'Stream dihentikan');
+    }
+
+    function togglePanel(side) {
+      const panel = document.getElementById('panel-' + side);
+      const grid = document.querySelector('.grid');
+      
+      panel.classList.toggle('hidden');
+      
+      const leftHidden = document.getElementById('panel-left').classList.contains('hidden');
+      const rightHidden = document.getElementById('panel-right').classList.contains('hidden');
+      
+      grid.classList.remove('no-side-panels', 'no-left-panel', 'no-right-panel');
+      
+      if (leftHidden && rightHidden) {
+        grid.classList.add('no-side-panels');
+      } else if (leftHidden) {
+        grid.classList.add('no-left-panel');
+      } else if (rightHidden) {
+        grid.classList.add('no-right-panel');
+      }
+    }
+
+    // ─── Auto connect on load ─────────────────────────────────────────────────────
+
+    window.addEventListener('load', () => {
+      const url = document.getElementById('ws-url').value;
+      connectWS(url);
+      addLog('SYS', 'Dashboard siap. Menghubungkan ke server...');
+    });
+  </script>
+</body>
+
+</html>

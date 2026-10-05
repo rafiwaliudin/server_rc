@@ -1,0 +1,41 @@
+calibration:
+  brake_max: -1.0
+  brake_min: 1.0
+  deadzone_pedal: 0.02
+  deadzone_steering: 0
+  steering_center: 0
+  steering_max_angle: 90
+  steering_range: 0.8
+  throttle_max: -1.0
+  throttle_min: 1
+controller:
+  active_car_ids:
+  - 1
+  - 1
+  - 3
+  axis_brake: 2
+  axis_combined: 2
+  axis_steering: 0
+  axis_throttle: 5
+  btn_brake: 4
+  btn_headlight: 6
+  btn_horn: 8
+  btn_selection: 7
+  btn_speed_down: 0
+  btn_speed_up: 2
+  btn_throttle: 5
+  combined_pedals: false
+  joystick_index: 0
+  speed_limits:
+  - 5
+  - 5
+  - 5
+video:
+  sources:
+  - /dev/video0
+  - ''
+  - ''
+websocket:
+  broadcast_hz: 60
+  host: 0.0.0.0
+  port: 8888
